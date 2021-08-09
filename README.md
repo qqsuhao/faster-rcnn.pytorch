@@ -1,3 +1,19 @@
+# 本项目直接fork了jwyang/faster-rcnn.pytorch，旨在学习faster RCNN
+## 建议使用vscode并安装Better Comments插件阅读该项目代码。Better Comments能用不同的颜色标注注释，视觉效果很棒，比一般的灰色注释可读性更强.
+- 2021.08.09 详细阅读了vgg16.py和faster_RCNN.py中的代码并加了注释；对应的网络结构以及代码中对应的命名都绘制在了structure.pptx文件中
+- <div style="color:#0000FF" align="center">
+    <img src="./readme_images/pic1.png" width="600"/> 
+    </div>
+- 项目持续更新中。。。。。。
+
+
+
+
+
+
+---
+---
+
 # A *Faster* Pytorch Implementation of Faster R-CNN
 
 ## Write at the beginning
