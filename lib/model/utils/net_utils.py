@@ -70,7 +70,9 @@ def save_checkpoint(state, filename):
     torch.save(state, filename)
 
 def _smooth_l1_loss(bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):
-    
+    '''
+    # ! 这个损失函数和我想的有点不一样，加了好多权重，不过整体上和smmoth_l1_loss的公式是符合的
+    '''
     sigma_2 = sigma ** 2
     box_diff = bbox_pred - bbox_targets
     in_box_diff = bbox_inside_weights * box_diff

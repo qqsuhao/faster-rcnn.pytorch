@@ -13,6 +13,8 @@ from datasets.factory import get_imdb
 import PIL
 import pdb
 
+# ? 这一部分代码有些繁琐，没看懂是要干什么，后边再说
+
 def prepare_roidb(imdb):
   """Enrich the imdb's roidb by adding some derived quantities that
   are useful for training. This function precomputes the maximum
@@ -101,8 +103,8 @@ def filter_roidb(roidb):
 def combined_roidb(imdb_names, training=True):
   """
   Combine multiple roidbs
+  # * imdb_names是数据集的名字
   """
-
   def get_training_roidb(imdb):
     """Returns a roidb (Region of Interest database) for use in training."""
     if cfg.TRAIN.USE_FLIPPED:

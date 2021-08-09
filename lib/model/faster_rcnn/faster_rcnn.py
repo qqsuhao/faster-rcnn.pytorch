@@ -28,8 +28,8 @@ class _fasterRCNN(nn.Module):
         self.RCNN_loss_bbox = 0
 
         # define rpn
-        self.RCNN_rpn = _RPN(self.dout_base_model)
-        self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)
+        self.RCNN_rpn = _RPN(self.dout_base_model)                                                                          # * 根据骨干网输出维度初始化RPN层
+        self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)                                                    # * 区域推荐层
         self.RCNN_roi_pool = _RoIPooling(cfg.POOLING_SIZE, cfg.POOLING_SIZE, 1.0/16.0)
         self.RCNN_roi_align = RoIAlignAvg(cfg.POOLING_SIZE, cfg.POOLING_SIZE, 1.0/16.0)
 
@@ -44,15 +44,18 @@ class _fasterRCNN(nn.Module):
         num_boxes = num_boxes.data
 
         # feed image data to base model to obtain base feature map
-        base_feat = self.RCNN_base(im_data)
+        base_feat = self.RCNN_base(im_data)                                                                          # * RCNN_base就是骨干网
 
         # feed base feature map to RPN to obtain rois
-        rois, rpn_loss_cls, rpn_loss_bbox = self.RCNN_rpn(base_feat, im_info, gt_boxes, num_boxes)
+        rois, rpn_loss_cls, rpn_loss_bbox = self.RCNN_rpn(base_feat, im_info, gt_boxes, num_boxes)                   # * 输入骨干网提取出来的特征图以及真值信息得到推荐区域位置和损失
 
         # if it is training phase, then use ground truth bboxes for refining
-        if self.training:
-            roi_data = self.RCNN_proposal_target(rois, gt_boxes, num_boxes)
-            rois, rois_label, rois_target, rois_inside_ws, rois_outside_ws = roi_data
+        if self.training:                                                                                           # * 如果处于训练阶段
+            roi_data = self.RCNN_proposal_target(rois, gt_boxes, num_boxes)                                         # * 输入推荐区域位置得到推荐区域的特征
+            rois, rois_label, rois_target, rois_inside_ws, rois_outside_ws = roi_data                               
+            # * rois_inside_ws, rois_outside_ws是两个权重系数，在求解smmoth_l1_loss的时候会用到
+            # * rois_target是真值经过转换后得到的真值偏置，这个过程发生在RCNN_proposal_target内部
+            # * rois_label应该是标识类别标签的one-hot向量
 
             rois_label = Variable(rois_label.view(-1).long())
             rois_target = Variable(rois_target.view(-1, rois_target.size(2)))
@@ -69,7 +72,9 @@ class _fasterRCNN(nn.Module):
         rois = Variable(rois)
         # do roi pooling based on predicted rois
 
-        if cfg.POOLING_MODE == 'crop':
+        # ! #########################################################################################
+        # ! 注释行包住的这几行代码是在做roi_pooling
+        if cfg.POOLING_MODE == 'crop':                                                                      # * 选择三种roi_pooling的方式
             # pdb.set_trace()
             # pooled_feat_anchor = _crop_pool_layer(base_feat, rois.view(-1, 5))
             grid_xy = _affine_grid_gen(rois.view(-1, 5), base_feat.size()[2:], self.grid_size)
@@ -77,17 +82,18 @@ class _fasterRCNN(nn.Module):
             pooled_feat = self.RCNN_roi_crop(base_feat, Variable(grid_yx).detach())
             if cfg.CROP_RESIZE_WITH_MAX_POOL:
                 pooled_feat = F.max_pool2d(pooled_feat, 2, 2)
-        elif cfg.POOLING_MODE == 'align':
+        elif cfg.POOLING_MODE == 'align':                                                                   # * 配置文件中选择了align这一种模式
             pooled_feat = self.RCNN_roi_align(base_feat, rois.view(-1, 5))
         elif cfg.POOLING_MODE == 'pool':
             pooled_feat = self.RCNN_roi_pool(base_feat, rois.view(-1,5))
 
         # feed pooled features to top model
-        pooled_feat = self._head_to_tail(pooled_feat)
+        pooled_feat = self._head_to_tail(pooled_feat)                                                       # * _head_to_tail是一个VGG16分类器中的全连接层，很有意思，一般的讲解都不没有这里
+        # ! #########################################################################################
 
         # compute bbox offset
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
-        if self.training and not self.class_agnostic:
+        if self.training and not self.class_agnostic:                       # ? 这里的代码有些琐碎，没有细看，总之就是如果要对每个类别进行目标框预测，需要进行一些tensor维度上的改动
             # select the corresponding columns according to roi labels
             bbox_pred_view = bbox_pred.view(bbox_pred.size(0), int(bbox_pred.size(1) / 4), 4)
             bbox_pred_select = torch.gather(bbox_pred_view, 1, rois_label.view(rois_label.size(0), 1, 1).expand(rois_label.size(0), 1, 4))
@@ -95,17 +101,17 @@ class _fasterRCNN(nn.Module):
 
         # compute object classification probability
         cls_score = self.RCNN_cls_score(pooled_feat)
-        cls_prob = F.softmax(cls_score, 1)
+        cls_prob = F.softmax(cls_score, 1)                  # * 因为要使用交叉熵进行分类，所以这里使用了softmax
 
         RCNN_loss_cls = 0
         RCNN_loss_bbox = 0
 
         if self.training:
             # classification loss
-            RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)
+            RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)                                              # * 交叉熵求损失
 
             # bounding box regression L1 loss
-            RCNN_loss_bbox = _smooth_l1_loss(bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)
+            RCNN_loss_bbox = _smooth_l1_loss(bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)           # * 预测框的位置损失
 
 
         cls_prob = cls_prob.view(batch_size, rois.size(1), -1)
